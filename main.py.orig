@@ -1,0 +1,26 @@
+import os,sys
+import torch
+
+from torch.utils.data import DataLoader, TensorDataset
+
+
+class preprocessing:
+    def __init__(self):
+        pass
+    def cleaning(self):
+        pass
+
+
+class reading:
+    def __init__(self):
+        self.read()
+        pass
+    def read(self):
+        pass
+    def lang_detect(self):
+        pass
+
+
+if __name__=="__main__":
+    preprocessor=preprocessing()
+    reader = reading()
