@@ -132,7 +132,83 @@ class preprocessing_reading:
 
         elif self.task==1:
             #Pass the data for the rnn for prediction
-            pass
+            """
+                Data for prediction is cleaned and then passesd on to the neural network
+                Step 1: Data is converted to lower case
+                Step 2: Punctuation are remove from the data
+            """
+            for each_review in self.dictlist:
+                try:
+                    each_review['emoji_clean'] = each_review['emoji_clean'].lower()
+                    temp_string = each_review['emoji_clean']
+                except:
+                    each_review['emoji_clean'] = str(each_review['emoji_clean'])
+                    each_review['emoji_clean'] = each_review['emoji_clean'].lower()
+                for each in punctuation:
+                    temp_string.replace(each, '')
+                each_review['emoji_clean'] = temp_string
+                self.reviews.append(temp_string)
+
+            '''
+                Converting the words in all the reviews to numbers using counter function for best results. Words 
+                appearing more are given smaller index
+            '''
+            all_text2 = ' '.join(self.reviews)
+
+            #Create a list of words
+            words = all_text2.split()
+
+            #Count all the words using counter method
+            count_words = Counter(words)
+
+            total_words = len(words)
+            sorted_words = count_words.most_common(total_words)
+
+            '''
+                Used i+1 below to give keys to the dictionary from 1 as it would be convenient while using nn as 0 is left
+                for padding.
+                Converted all the reviews into respective number format for easy processing
+            '''
+            vocab_to_int = {w:i+1 for i, (w,c) in enumerate(sorted_words)}
+            vocabulary_len = len(vocab_to_int)
+            for review in self.reviews:
+                r = [vocab_to_int[w] for w in review.split()]
+                self.reviews_int.append(r)
+
+            '''
+                Reviews are truncated to a particular length to train the neural network of a particular number of nodes.
+                Reviews whose length is longer are truncated or completely removed from the dataset.
+                Reviews whose length is shorter is padded with 0 as the review integer. This is the reason 0 is excluded
+                from word to integer mapping.
+            '''
+            count = 0
+            truncate = []
+            for each_review in self.reviews_int:
+                if len(each_review) < 100:
+                    # Need to adding padding to the comment
+                    pad_required = 100 - len(each_review)
+                    for i in range(pad_required):
+                        each_review.append(0)
+                elif len(each_review) > 100:
+                    # Need to truncate the review
+                    truncate.append(count)
+                elif len(each_review) == 100:
+                    pass
+                count += 1
+            for each in truncate:
+                self.reviews_int.pop(each)
+                self.reviews.pop(each)
+
+            # Checking the language of each feature andd sorting features and labels accordingly in the specified lists
+            count = 0
+            for review in self.reviews:
+                self.lang_detect(review['emoji_clean'], count)
+                count += 1
+
+            # Passing all the parameters of this class to the senti_analysis class for training the neural network
+            english_sa.senti_analysis.prediction(self.eng_features, vocab_to_int)
+            telugu_sa.senti_analysis.prediction(self.tel_features, vocab_to_int)
+
 
     def read(self):
         file = os.listdir("./corpus/")

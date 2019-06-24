@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader, TensorDataset
-from traitlets.config.tests import test_loader
 from sann import SentimentLSTM
 
 
@@ -61,14 +60,19 @@ class senti_analysis():
         print('Telugu Sample label size: ', sample_y.size())  # batch_size
         print('Telugu Sample label: \n', sample_y)
 
-        # Instantizing a neural network
-        vocab_size = len(vocab_to_int) + 1  # +1 for the 0 padding
-        output_size = 1
-        embedding_dim = 400
-        hidden_dim = 256
-        n_layers = 2
-        self.net = SentimentLSTM(vocab_size, output_size, embedding_dim, hidden_dim, n_layers)
-        # print(self.net)
+        #Code to check if a saved model exists for the
+        try:
+            self.net = torch.load("network_models/lstmmodeltelugu.pth")
+            #Eval method is not called here because we require the model for taining not for evaluation
+        except:
+            # Instantizing a neural network
+            vocab_size = len(vocab_to_int) + 1  # +1 for the 0 padding
+            output_size = 1
+            embedding_dim = 400
+            hidden_dim = 256
+            n_layers = 2
+            self.net = SentimentLSTM(vocab_size, output_size, embedding_dim, hidden_dim, n_layers)
+            # print(self.net)
 
         # Checking if gpu support is available in this system
         train_on_gpu = torch.cuda.is_available()
@@ -77,7 +81,7 @@ class senti_analysis():
         lr = 0.001
 
         self.criterion = nn.BCELoss()
-        optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
 
         # training params
 
@@ -120,7 +124,7 @@ class senti_analysis():
                 loss.backward()
                 # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
                 nn.utils.clip_grad_norm_(self.net.parameters(), clip)
-                optimizer.step()
+                self.optimizer.step()
 
                 # loss stats
                 if counter % print_every == 0:
@@ -148,6 +152,7 @@ class senti_analysis():
                           "Step: {}...".format(counter),
                           "Loss: {:.6f}...".format(loss.item()),
                           "Val Loss: {:.6f}".format(np.mean(val_losses)))
+                    self.testing()
 
     def testing(self):
 
@@ -195,8 +200,16 @@ class senti_analysis():
         print("Test loss: {:.3f}".format(np.mean(test_losses)))
 
         # accuracy over all test data
-        test_acc = num_correct / len(test_loader.dataset)
+        test_acc = num_correct / len(self.test_loader.dataset)
         print("Test accuracy: {:.3f}".format(test_acc))
+        self.saveModel()
 
-    def prediction(self):
-        pass
+    def prediction(self, features, vocab_to_int):
+        try:
+            torch.load("network_models/lstmmodeltelugu.pth")
+        except:
+            print("Train your model first")
+
+
+    def saveModel(self):
+        torch.save(self.net, "network_models/lstmmodeltelugu.pth")

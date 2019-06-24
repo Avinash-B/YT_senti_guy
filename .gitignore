@@ -4,3 +4,5 @@ test.py
 corpus/*
 *.orig
 __pycache__/*
+todo.txt
+network_models/*
