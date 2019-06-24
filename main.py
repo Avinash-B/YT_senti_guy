@@ -1,4 +1,4 @@
-import os,sys
+import os
 import csv
 import telugu_sa, english_sa
 
@@ -19,11 +19,22 @@ class preprocessing_reading:
     '''
     def __init__(self, task):
         self.task = task
+        #A dictionary list for storing all dictionaries. It contains all the acutal data from the csv file
         self.dictlist=[]
-        self.read()
+        #List for storing actual reviews in it
         self.reviews=[]
+        #List for storing reviews after tokenising it
+        self.reviews_int=[]
+        #List for storing the labels of each review
         self.labels=[]
-        pass
+        self.read()
+
+        #Labels for sorting telugu and english features and labels
+        self.eng_features = []
+        self.eng_labels = []
+        self.tel_features=[]
+        self.tel_labels=[]
+
     def cleaning(self):
         if self.task==0:
             '''
@@ -59,17 +70,62 @@ class preprocessing_reading:
 
             '''
                 Used i+1 below to give keys to the dictionary from 1 as it would be convenient while using nn as 0 is left
-                for padding
+                for padding.
+                Converted all the reviews into respective number format for easy processing
             '''
             vocab_to_int = {w:i+1 for i, (w,c) in enumerate(sorted_words)}
+            for review in self.reviews:
+                r = [vocab_to_int[w] for w in review.split()]
+                self.reviews_int.append(r)
+
+            #Converted sentiment of tweets to numbers, 0 :Neutral, 1:Positive, -1: Negative
+            for each_review in self.dictlist:
+                if each_review['sentiment']=="Positive":
+                    self.labels.append(1)
+                elif each_review['sentiment']=="Neutral":
+                    self.labels.append(0)
+                elif each_review['sentiment']=="Negative":
+                    self.labels.append(-1)
+
+            '''
+                Reviews are truncated to a particular length to train the neural network of a particular number of nodes.
+                Reviews whose length is longer are truncated or completely removed from the dataset.
+                Reviews whose length is shorter is padded with 0 as the review integer. This is the reason 0 is excluded
+                from word to integer mapping.
+            '''
+            count=0
+            truncate=[]
+            for each_review in self.reviews_int:
+                if len(each_review)<100:
+                    #Need to adding padding to the comment
+                    pad_required = 100-len(each_review)
+                    for i in range(pad_required):
+                        each_review.append(0)
+                elif len(each_review)>100:
+                    #Need to truncate the review
+                    truncate.append(count)
+                elif len(each_review)==100:
+                    pass
+                count+=1
+            for each in truncate:
+                self.reviews_int.pop(each)
+                self.labels.pop(each)
+                self.reviews.pop(each)
+
+            #Checking the language of each feature andd sorting features and labels accordingly in the specified lists
+            count=0
+            for review in self.reviews:
+                self.lang_detect(review['emoji_clean'], count)
+                count+=1
+
+            #Passing all the parameters of this class to the senti_analysis class for training the neural network
+            english_sa.senti_analysis.training(self.eng_features, self.eng_labels)
+            telugu_sa.senti_analysis.training(self.tel_features, self.tel_labels)
+
         elif self.task==1:
             #Pass the data for the rnn for prediction
-        elif self.task==2:
-            #Pass the data for the rnn for accuracy check
-        #This line need to be deleted at last, just added for syntax warning supression
-        cleaned_data=""
-        self.lang_detect(self,data=cleaned_data)
-        pass
+            pass
+
     def read(self):
         file = os.listdir("./corpus/")
         corpus_path = "corpus/" + file[0]
@@ -78,12 +134,15 @@ class preprocessing_reading:
             self.dictlist.append(eachline)
         self.cleaning()
         pass
-    def lang_detect(self, data):
-        lang=detect("")
+
+    def lang_detect(self, data, count):
+        lang=detect(data)
         if lang=='te':
-            telugu_sa.senti_analysis()
+            self.tel_features.append(self.reviews_int[count])
+            self.tel_labels.append(self.labels[count])
         elif lang=='en':
-            english_sa.senti_analysis()
+            self.eng_features.append(self.reviews_int[count])
+            self.eng_labels.append(self.labels[count])
 
 
 if __name__=='__main__':
