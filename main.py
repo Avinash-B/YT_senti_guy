@@ -34,7 +34,6 @@ class preprocessing_reading:
         self.reviews_int=[]
         #List for storing the labels of each review
         self.labels=[]
-        self.read()
 
         #Labels for sorting telugu and english features and labels
         self.eng_features = []
@@ -81,7 +80,6 @@ class preprocessing_reading:
                 Converted all the reviews into respective number format for easy processing
             '''
             vocab_to_int = {w:i+1 for i, (w,c) in enumerate(sorted_words)}
-            vocabulary_len = len(vocab_to_int)
             for review in self.reviews:
                 r = [vocab_to_int[w] for w in review.split()]
                 self.reviews_int.append(r)
@@ -123,12 +121,16 @@ class preprocessing_reading:
             #Checking the language of each feature andd sorting features and labels accordingly in the specified lists
             count=0
             for review in self.reviews:
-                self.lang_detect(review['emoji_clean'], count)
+                self.lang_detect(review, count)
                 count+=1
 
             #Passing all the parameters of this class to the senti_analysis class for training the neural network
-            english_sa.senti_analysis.training(self.eng_features, self.eng_labels, vocab_to_int)
-            telugu_sa.senti_analysis.training(self.tel_features, self.tel_labels, vocab_to_int)
+            kwargs = {"features": self.eng_features, "encoded_labels": self.eng_labels, "vocab_to_int": vocab_to_int}
+            english = english_sa.senti_analysis(**kwargs)
+            english.training()
+            kwargs = {"features": self.tel_features, "encoded_labels": self.tel_labels, "vocab_to_int": vocab_to_int}
+            telugu = telugu_sa.senti_analysis(**kwargs)
+            telugu.training()
 
         elif self.task==1:
             #Pass the data for the rnn for prediction
@@ -136,7 +138,7 @@ class preprocessing_reading:
                 Data for prediction is cleaned and then passesd on to the neural network
                 Step 1: Data is converted to lower case
                 Step 2: Punctuation are remove from the data
-            """
+            """['emoji_clean']
             for each_review in self.dictlist:
                 try:
                     each_review['emoji_clean'] = each_review['emoji_clean'].lower()
@@ -202,22 +204,22 @@ class preprocessing_reading:
             # Checking the language of each feature andd sorting features and labels accordingly in the specified lists
             count = 0
             for review in self.reviews:
-                self.lang_detect(review['emoji_clean'], count)
-                count += 1
+                print()
+                self.lang_detect(review, count)
+                count+=1
 
             # Passing all the parameters of this class to the senti_analysis class for training the neural network
-            english_sa.senti_analysis.prediction(self.eng_features, vocab_to_int)
-            telugu_sa.senti_analysis.prediction(self.tel_features, vocab_to_int)
+            english = english_sa.senti_analysis(self.eng_features, vocab_to_int)
+            telugu = telugu_sa.senti_analysis(self.tel_features, vocab_to_int)
 
 
     def read(self):
-        file = os.listdir("./corpus/")
-        corpus_path = "corpus/" + file[0]
-        csvreader = csv.DictReader(open(corpus_path, 'rb'))
+        # file = os.listdir("./corpus/")
+        corpus_path = "corpus/118tweets_SA.csv"
+        csvreader = csv.DictReader(open(corpus_path, 'r'))
         for eachline in csvreader:
             self.dictlist.append(eachline)
         self.cleaning()
-        pass
 
     def lang_detect(self, data, count):
         lang=detect(data)
@@ -230,5 +232,6 @@ class preprocessing_reading:
 
 
 if __name__=='__main__':
-    task = input("Enter 0 for training and 1 for testing:")
+    task = int(input("Enter 0 for training and 1 for testing:"))
     integrator=preprocessing_reading(task)
+    integrator.read()

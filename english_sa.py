@@ -11,26 +11,31 @@ class senti_analysis():
         Dataloaders are required to store the trained weights and to retrieve them whenever you predict values
         In this one we are using Dataloaders of tensorflow to make this process easier
     """
-
-    def training(self, features, encoded_labels, vocab_to_int):
+    def __init__(self, **kwargs):
+        self.features = kwargs["features"]
+        self.encoded_labels = kwargs["encoded_labels"]
+        self.vocab_to_int = kwargs["vocab_to_int"]
+        self.training()
         self.net = None
-        self.criterion=None
-        self.train_loader=None
-        self.batch_size = None
-        self.test_loader=None
-        self.valid_loader=None
+        self.criterion = None
+        self.train_loader = None
+        self.batch_size = 50
+        self.test_loader = None
+        self.valid_loader = None
+
+    def training(self):
 
         #Split fraction for training and accuracy check
         split_frac = 0.8
 
         #Total lenght of the fetures to break them for training and testing purpouses
-        len_feat = len(features)
+        len_feat = len(self.features)
 
-        train_x = features[0:int(split_frac * len_feat)]
-        train_y = encoded_labels[0:int(split_frac * len_feat)]
+        train_x = self.features[0:int(split_frac * len_feat)]
+        train_y = self.encoded_labels[0:int(split_frac * len_feat)]
 
-        remaining_x = features[int(split_frac * len_feat):]
-        remaining_y = encoded_labels[int(split_frac * len_feat):]
+        remaining_x = self.features[int(split_frac * len_feat):]
+        remaining_y = self.encoded_labels[int(split_frac * len_feat):]
 
         valid_x = remaining_x[0:int(len(remaining_x) * 0.5)]
         valid_y = remaining_y[0:int(len(remaining_y) * 0.5)]
@@ -39,9 +44,9 @@ class senti_analysis():
         test_y = remaining_y[int(len(remaining_y) * 0.5):]
 
         # create Tensor datasets
-        train_data = TensorDataset(torch.from_numpy(train_x), torch.from_numpy(train_y))
-        valid_data = TensorDataset(torch.from_numpy(valid_x), torch.from_numpy(valid_y))
-        test_data = TensorDataset(torch.from_numpy(test_x), torch.from_numpy(test_y))
+        train_data = TensorDataset(torch.from_numpy(np.asarray(train_x)), torch.from_numpy(np.asarray(train_y)))
+        valid_data = TensorDataset(torch.from_numpy(np.asarray(valid_x)), torch.from_numpy(np.asarray(valid_y)))
+        test_data = TensorDataset(torch.from_numpy(np.asarray(test_x)), torch.from_numpy(np.asarray(test_y)))
 
         # dataloaders
         self.batch_size = 50
@@ -67,7 +72,7 @@ class senti_analysis():
             # Eval method is not called here because we require the model for taining not for evaluation
         except:
             # Instantizing a neural network
-            vocab_size = len(vocab_to_int) + 1  # +1 for the 0 padding
+            vocab_size = len(self.vocab_to_int) + 1  # +1 for the 0 padding
             output_size = 1
             embedding_dim = 400
             hidden_dim = 256
@@ -95,8 +100,7 @@ class senti_analysis():
         # move model to GPU, if available
         if (train_on_gpu):
             self.net.cuda()
-
-        self.net.train()
+            self.net.train()
         # train for some number of epochs
         for e in range(epochs):
             # initialize hidden state
@@ -143,6 +147,7 @@ class senti_analysis():
                             inputs, labels = inputs.cuda(), labels.cuda()
 
                         inputs = inputs.type(torch.LongTensor)
+                        inputs = tuple(inputs)
                         output, val_h = self.net(inputs, val_h)
                         val_loss = self.criterion(output.squeeze(), labels.float())
 
@@ -153,7 +158,7 @@ class senti_analysis():
                           "Step: {}...".format(counter),
                           "Loss: {:.6f}...".format(loss.item()),
                           "Val Loss: {:.6f}".format(np.mean(val_losses)))
-                    self.testing()
+        self.testing()
 
     def testing(self):
 
