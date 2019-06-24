@@ -1,7 +1,10 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader, TensorDataset
+from traitlets.config.tests import test_loader
+from sann import SentimentLSTM
 
 
 class senti_analysis():
@@ -10,7 +13,13 @@ class senti_analysis():
         In this one we are using Dataloaders of tensorflow to make this process easier
     """
 
-    def training(self, features, encoded_labels):
+    def training(self, features, encoded_labels, vocab_to_int):
+        self.net=None
+        self.crigterion=None
+        self.test_loader=None
+        self.valid_loader=None
+        self.train_loader=None
+
         # Split fraction for training and accuracy check
         split_frac = 0.8
 
@@ -35,95 +44,159 @@ class senti_analysis():
         test_data = TensorDataset(torch.from_numpy(test_x), torch.from_numpy(test_y))
 
         # dataloaders
-        batch_size = 50
+        self.batch_size = 50
 
         # make sure to SHUFFLE your data
-        train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
-        valid_loader = DataLoader(valid_data, shuffle=True, batch_size=batch_size)
-        test_loader = DataLoader(test_data, shuffle=True, batch_size=batch_size)
+        self.train_loader = DataLoader(train_data, shuffle=True, batch_size=self.batch_size)
+        self.valid_loader = DataLoader(valid_data, shuffle=True, batch_size=self.batch_size)
+        self.test_loader = DataLoader(test_data, shuffle=True, batch_size=self.batch_size)
 
         # obtain one batch of training data
-        dataiter = iter(train_loader)
+        dataiter = iter(self.train_loader)
         sample_x, sample_y = dataiter.next()
 
-        print('Sample input size: ', sample_x.size())  # batch_size, seq_length
-        print('Sample input: \n', sample_x)
+        print('Telugu Sample input size: ', sample_x.size())  # batch_size, seq_length
+        print('Telugu Sample input: \n', sample_x)
         print()
-        print('Sample label size: ', sample_y.size())  # batch_size
-        print('Sample label: \n', sample_y)
+        print('Telugu Sample label size: ', sample_y.size())  # batch_size
+        print('Telugu Sample label: \n', sample_y)
+
+        # Instantizing a neural network
+        vocab_size = len(vocab_to_int) + 1  # +1 for the 0 padding
+        output_size = 1
+        embedding_dim = 400
+        hidden_dim = 256
+        n_layers = 2
+        self.net = SentimentLSTM(vocab_size, output_size, embedding_dim, hidden_dim, n_layers)
+        # print(self.net)
+
+        # Checking if gpu support is available in this system
+        train_on_gpu = torch.cuda.is_available()
+
+        # loss and optimization functions
+        lr = 0.001
+
+        self.criterion = nn.BCELoss()
+        optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
+
+        # training params
+
+        epochs = 4  # 3-4 is approx where I noticed the validation loss stop decreasing
+
+        counter = 0
+        print_every = 100
+        clip = 5  # gradient clipping
+
+        # move model to GPU, if available
+        if (train_on_gpu):
+            self.net.cuda()
+
+        self.net.train()
+        # train for some number of epochs
+        for e in range(epochs):
+            # initialize hidden state
+            h = self.net.init_hidden(self.batch_size)
+
+            # batch loop
+            for inputs, labels in self.train_loader:
+                counter += 1
+
+                if (train_on_gpu):
+                    inputs, labels = inputs.cuda(), labels.cuda()
+
+                # Creating new variables for the hidden state, otherwise
+                # we'd backprop through the entire training history
+                h = tuple([each.data for each in h])
+
+                # zero accumulated gradients
+                self.net.zero_grad()
+
+                # get the output from the model
+                inputs = inputs.type(torch.LongTensor)
+                output, h = self.net(inputs, h)
+
+                # calculate the loss and perform backprop
+                loss = self.criterion(output.squeeze(), labels.float())
+                loss.backward()
+                # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+                nn.utils.clip_grad_norm_(self.net.parameters(), clip)
+                optimizer.step()
+
+                # loss stats
+                if counter % print_every == 0:
+                    # Get validation loss
+                    val_h = self.net.init_hidden(self.batch_size)
+                    val_losses = []
+                    self.net.eval()
+                    for inputs, labels in self.valid_loader:
+
+                        # Creating new variables for the hidden state, otherwise
+                        # we'd backprop through the entire training history
+                        val_h = tuple([each.data for each in val_h])
+
+                        if (train_on_gpu):
+                            inputs, labels = inputs.cuda(), labels.cuda()
+
+                        inputs = inputs.type(torch.LongTensor)
+                        output, val_h = self.net(inputs, val_h)
+                        val_loss = self.criterion(output.squeeze(), labels.float())
+
+                        val_losses.append(val_loss.item())
+
+                    self.net.train()
+                    print("Epoch: {}/{}...".format(e + 1, epochs),
+                          "Step: {}...".format(counter),
+                          "Loss: {:.6f}...".format(loss.item()),
+                          "Val Loss: {:.6f}".format(np.mean(val_losses)))
 
     def testing(self):
 
-        pass
-
-
-class SentimentLSTM(nn.Module):
-    """
-    The RNN model that will be used to perform Sentiment analysis.
-    """
-
-    def __init__(self, vocab_size, output_size, embedding_dim, hidden_dim, n_layers, drop_prob=0.5):
-        """
-        Initialize the model by setting up the layers.
-        """
-        super().__init__()
-
-        self.output_size = output_size
-        self.n_layers = n_layers
-        self.hidden_dim = hidden_dim
-
-        # embedding and LSTM layers
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, n_layers,
-                            dropout=drop_prob, batch_first=True)
-
-        # dropout layer
-        self.dropout = nn.Dropout(0.3)
-
-        # linear and sigmoid layers
-        self.fc = nn.Linear(hidden_dim, output_size)
-        self.sig = nn.Sigmoid()
-
-    def forward(self, x, hidden):
-        """
-        Perform a forward pass of our model on some input and hidden state.
-        """
-        batch_size = x.size(0)
-
-        # embeddings and lstm_out
-        embeds = self.embedding(x)
-        lstm_out, hidden = self.lstm(embeds, hidden)
-
-        # stack up lstm outputs
-        lstm_out = lstm_out.contiguous().view(-1, self.hidden_dim)
-
-        # dropout and fully-connected layer
-        out = self.dropout(lstm_out)
-        out = self.fc(out)
-        # sigmoid function
-        sig_out = self.sig(out)
-
-        # reshape to be batch_size first
-        sig_out = sig_out.view(batch_size, -1)
-        sig_out = sig_out[:, -1]  # get last batch of labels
-
-        # return last sigmoid output and hidden state
-        return sig_out, hidden
-
-    def init_hidden(self, batch_size):
-        ''' Initializes hidden state '''
-        # Create two new tensors with sizes n_layers x batch_size x hidden_dim,
-        # initialized to zero, for hidden state and cell state of LSTM
-        weight = next(self.parameters()).data
-
-        #CHecking if gpu support is available
+        # Checking if gpu support is available in this system
         train_on_gpu = torch.cuda.is_available()
 
-        if (train_on_gpu):
-            hidden = (weight.new(self.n_layers, batch_size, self.hidden_dim).zero_().cuda(),
-                      weight.new(self.n_layers, batch_size, self.hidden_dim).zero_().cuda())
-        else:
-            hidden = (weight.new(self.n_layers, batch_size, self.hidden_dim).zero_(),
-                      weight.new(self.n_layers, batch_size, self.hidden_dim).zero_())
+        # Get test data loss and accuracy
 
-        return hidden
+        test_losses = []  # track loss
+        num_correct = 0
+
+        # init hidden state
+        h = self.net.init_hidden(self.batch_size)
+
+        self.net.eval()
+        # iterate over test data
+        for inputs, labels in self.test_loader:
+
+            # Creating new variables for the hidden state, otherwise
+            # we'd backprop through the entire training history
+            h = tuple([each.data for each in h])
+
+            if (train_on_gpu):
+                inputs, labels = inputs.cuda(), labels.cuda()
+
+            # get predicted outputs
+            inputs = inputs.type(torch.LongTensor)
+            output, h = self.net(inputs, h)
+
+            # calculate loss
+            test_loss = self.criterion(output.squeeze(), labels.float())
+            test_losses.append(test_loss.item())
+
+            # convert output probabilities to predicted class (0 or 1)
+            pred = torch.round(output.squeeze())  # rounds to the nearest integer
+
+            # compare predictions to true label
+            correct_tensor = pred.eq(labels.float().view_as(pred))
+            correct = np.squeeze(correct_tensor.numpy()) if not train_on_gpu else np.squeeze(
+                correct_tensor.cpu().numpy())
+            num_correct += np.sum(correct)
+
+        # -- stats! -- ##
+        # avg test loss
+        print("Test loss: {:.3f}".format(np.mean(test_losses)))
+
+        # accuracy over all test data
+        test_acc = num_correct / len(test_loader.dataset)
+        print("Test accuracy: {:.3f}".format(test_acc))
+
+    def prediction(self):
+        pass

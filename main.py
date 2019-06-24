@@ -6,6 +6,13 @@ from langdetect import detect
 from string import punctuation
 from collections import Counter
 
+"""
+    Variables for tweaking the analysis to run are to be mentioned down here.
+    Always place the file to run analysis in the corpus folder.
+"""
+filename=""
+
+
 
 class preprocessing_reading:
     '''
@@ -74,6 +81,7 @@ class preprocessing_reading:
                 Converted all the reviews into respective number format for easy processing
             '''
             vocab_to_int = {w:i+1 for i, (w,c) in enumerate(sorted_words)}
+            vocabulary_len = len(vocab_to_int)
             for review in self.reviews:
                 r = [vocab_to_int[w] for w in review.split()]
                 self.reviews_int.append(r)
@@ -119,8 +127,8 @@ class preprocessing_reading:
                 count+=1
 
             #Passing all the parameters of this class to the senti_analysis class for training the neural network
-            english_sa.senti_analysis.training(self.eng_features, self.eng_labels)
-            telugu_sa.senti_analysis.training(self.tel_features, self.tel_labels)
+            english_sa.senti_analysis.training(self.eng_features, self.eng_labels, vocab_to_int)
+            telugu_sa.senti_analysis.training(self.tel_features, self.tel_labels, vocab_to_int)
 
         elif self.task==1:
             #Pass the data for the rnn for prediction
