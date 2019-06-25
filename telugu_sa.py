@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from main import sequence_length
 from torch.utils.data import DataLoader, TensorDataset
 from sann import SentimentLSTM
 
@@ -42,9 +43,9 @@ class senti_analysis():
         test_y = remaining_y[int(len(remaining_y) * 0.5):]
 
         # create Tensor datasets
-        train_data = TensorDataset(torch.from_numpy(train_x), torch.from_numpy(train_y))
-        valid_data = TensorDataset(torch.from_numpy(valid_x), torch.from_numpy(valid_y))
-        test_data = TensorDataset(torch.from_numpy(test_x), torch.from_numpy(test_y))
+        train_data = TensorDataset(torch.from_numpy(np.asarray(train_x)), torch.from_numpy(np.asarray(train_y)))
+        valid_data = TensorDataset(torch.from_numpy(np.asarray(valid_x)), torch.from_numpy(np.asarray(valid_y)))
+        test_data = TensorDataset(torch.from_numpy(np.asarray(test_x)), torch.from_numpy(np.asarray(test_y)))
 
         # dataloaders
         self.batch_size = 50
@@ -84,7 +85,7 @@ class senti_analysis():
         # loss and optimization functions
         lr = 0.001
 
-        self.criterion = nn.BCELoss()
+        self.criterion = nn.CELoss()
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
 
         # training params
@@ -107,55 +108,57 @@ class senti_analysis():
 
             # batch loop
             for inputs, labels in self.train_loader:
-                counter += 1
+                if len(inputs)==self.batch_size:
+                    counter += 1
 
-                if (train_on_gpu):
-                    inputs, labels = inputs.cuda(), labels.cuda()
+                    if (train_on_gpu):
+                        inputs, labels = inputs.cuda(), labels.cuda()
 
-                # Creating new variables for the hidden state, otherwise
-                # we'd backprop through the entire training history
-                h = tuple([each.data for each in h])
+                    # Creating new variables for the hidden state, otherwise
+                    # we'd backprop through the entire training history
+                    h = tuple([each.data for each in h])
 
-                # zero accumulated gradients
-                self.net.zero_grad()
+                    # zero accumulated gradients
+                    self.net.zero_grad()
 
-                # get the output from the model
-                inputs = inputs.type(torch.LongTensor)
-                output, h = self.net(inputs, h)
+                    # get the output from the model
+                    inputs = inputs.type(torch.LongTensor)
+                    output, h = self.net(inputs, h)
 
-                # calculate the loss and perform backprop
-                loss = self.criterion(output.squeeze(), labels.float())
-                loss.backward()
-                # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-                nn.utils.clip_grad_norm_(self.net.parameters(), clip)
-                self.optimizer.step()
+                    # calculate the loss and perform backprop
+                    loss = self.criterion(output.squeeze(), labels.float())
+                    loss.backward()
+                    # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+                    nn.utils.clip_grad_norm_(self.net.parameters(), clip)
+                    self.optimizer.step()
 
-                # loss stats
-                if counter % print_every == 0:
-                    # Get validation loss
-                    val_h = self.net.init_hidden(self.batch_size)
-                    val_losses = []
-                    self.net.eval()
-                    for inputs, labels in self.valid_loader:
+                    # loss stats
+                    print_every=4
+                    if counter / print_every > 0:
+                        # Get validation loss
+                        val_h = self.net.init_hidden(self.batch_size)
+                        val_losses = []
+                        self.net.eval()
+                        for inputs, labels in self.valid_loader:
+                            if len(inputs)==self.batch_size:
+                                # Creating new variables for the hidden state, otherwise
+                                # we'd backprop through the entire training history
+                                val_h = tuple([each.data for each in val_h])
 
-                        # Creating new variables for the hidden state, otherwise
-                        # we'd backprop through the entire training history
-                        val_h = tuple([each.data for each in val_h])
+                                if (train_on_gpu):
+                                    inputs, labels = inputs.cuda(), labels.cuda()
 
-                        if (train_on_gpu):
-                            inputs, labels = inputs.cuda(), labels.cuda()
+                                # inputs = inputs.type(torch.LongTensor)
+                                output, val_h = self.net(inputs, val_h)
+                                val_loss = self.criterion(output.squeeze(), labels.float())
 
-                        # inputs = inputs.type(torch.LongTensor)
-                        output, val_h = self.net(inputs, val_h)
-                        val_loss = self.criterion(output.squeeze(), labels.float())
+                                val_losses.append(val_loss.item())
 
-                        val_losses.append(val_loss.item())
-
-                    self.net.train()
-                    print("Epoch: {}/{}...".format(e + 1, epochs),
-                          "Step: {}...".format(counter),
-                          "Loss: {:.6f}...".format(loss.item()),
-                          "Val Loss: {:.6f}".format(np.mean(val_losses)))
+                        self.net.train()
+                        print("Epoch: {}/{}...".format(e + 1, epochs),
+                              "Step: {}...".format(counter),
+                              "Loss: {:.6f}...".format(loss.item()),
+                              "Val Loss: {:.6f}".format(np.mean(val_losses)))
         self.testing()
 
     def testing(self):
@@ -174,30 +177,31 @@ class senti_analysis():
         self.net.eval()
         # iterate over test data
         for inputs, labels in self.test_loader:
+            if len(inputs)==self.batch_size:
 
-            # Creating new variables for the hidden state, otherwise
-            # we'd backprop through the entire training history
-            h = tuple([each.data for each in h])
+                # Creating new variables for the hidden state, otherwise
+                # we'd backprop through the entire training history
+                h = tuple([each.data for each in h])
 
-            if (train_on_gpu):
-                inputs, labels = inputs.cuda(), labels.cuda()
+                if (train_on_gpu):
+                    inputs, labels = inputs.cuda(), labels.cuda()
 
-            # get predicted outputs
-            inputs = inputs.type(torch.LongTensor)
-            output, h = self.net(inputs, h)
+                # get predicted outputs
+                inputs = inputs.type(torch.LongTensor)
+                output, h = self.net(inputs, h)
 
-            # calculate loss
-            test_loss = self.criterion(output.squeeze(), labels.float())
-            test_losses.append(test_loss.item())
+                # calculate loss
+                test_loss = self.criterion(output.squeeze(), labels.float())
+                test_losses.append(test_loss.item())
 
-            # convert output probabilities to predicted class (0 or 1)
-            pred = torch.round(output.squeeze())  # rounds to the nearest integer
+                # convert output probabilities to predicted class (0 or 1)
+                pred = torch.round(output.squeeze())  # rounds to the nearest integer
 
-            # compare predictions to true label
-            correct_tensor = pred.eq(labels.float().view_as(pred))
-            correct = np.squeeze(correct_tensor.numpy()) if not train_on_gpu else np.squeeze(
-                correct_tensor.cpu().numpy())
-            num_correct += np.sum(correct)
+                # compare predictions to true label
+                correct_tensor = pred.eq(labels.float().view_as(pred))
+                correct = np.squeeze(correct_tensor.numpy()) if not train_on_gpu else np.squeeze(
+                    correct_tensor.cpu().numpy())
+                num_correct += np.sum(correct)
 
         # -- stats! -- ##
         # avg test loss
@@ -210,10 +214,43 @@ class senti_analysis():
 
     def prediction(self, features, vocab_to_int):
         try:
-            torch.load("network_models/lstmmodeltelugu.pth")
+            self.net = torch.load("network_models/lstmmodeltelugu.pth")
+            self.net.eval()
         except:
             print("Train your model first")
+        features = np.asarray(features)
+        for each_feature in features:
+            # Converting this list into a tensor to pass it to the model
+            each_feature_tensor = torch.from_numpy(each_feature)
 
+            print(each_feature_tensor.size())
+            batch_size = each_feature_tensor.size(0)
+
+            # Initialize the hidden state
+            h = self.net.init_hidden(batch_size)
+
+            # check if gpu support is available for this system
+            train_on_gpu = train_on_gpu = torch.cuda.is_available()
+
+            if (train_on_gpu):
+                each_feature_tensor = each_feature_tensor.cuda()
+
+            # get the output from the model
+            output, h = self.net(each_feature_tensor, h)
+
+            # convert output probabilities to predicted class (0 or 1)
+            pred = torch.round(output.squeeze())
+
+            # printing output value, before rounding
+            print('Prediction value, pre-rounding: {:.6f}'.format(output.item()))
+
+            # print custom response
+            if (pred.item() == 1):
+                print("Positive review detected!")
+            else:
+                print("Negative review detected.")
+
+            # Need to convert the reviews into the actual reviews and match them with the actual reviews
 
     def saveModel(self):
         torch.save(self.net, "network_models/lstmmodeltelugu.pth")

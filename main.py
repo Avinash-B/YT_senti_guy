@@ -11,6 +11,7 @@ from collections import Counter
     Always place the file to run analysis in the corpus folder.
 """
 filename=""
+sequence_length=100
 
 
 
@@ -102,12 +103,12 @@ class preprocessing_reading:
             count=0
             truncate=[]
             for each_review in self.reviews_int:
-                if len(each_review)<100:
+                if len(each_review)<sequence_length:
                     #Need to adding padding to the comment
-                    pad_required = 100-len(each_review)
+                    pad_required = sequence_length-len(each_review)
                     for i in range(pad_required):
                         each_review.append(0)
-                elif len(each_review)>100:
+                elif len(each_review)>sequence_length:
                     #Need to truncate the review
                     truncate.append(count)
                 elif len(each_review)==100:
@@ -125,6 +126,7 @@ class preprocessing_reading:
                 count+=1
 
             #Passing all the parameters of this class to the senti_analysis class for training the neural network
+            print(len(self.eng_features))
             kwargs = {"features": self.eng_features, "encoded_labels": self.eng_labels, "vocab_to_int": vocab_to_int}
             english = english_sa.senti_analysis(**kwargs)
             english.training()
@@ -172,7 +174,10 @@ class preprocessing_reading:
                 Converted all the reviews into respective number format for easy processing
             '''
             vocab_to_int = {w:i+1 for i, (w,c) in enumerate(sorted_words)}
+            # print(vocab_to_int)
             vocabulary_len = len(vocab_to_int)
+            # print(vocabulary_len)
+            exit(0)
             for review in self.reviews:
                 r = [vocab_to_int[w] for w in review.split()]
                 self.reviews_int.append(r)
