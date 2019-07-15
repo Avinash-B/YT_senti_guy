@@ -70,7 +70,7 @@ PyPrint==0.2.6
 pyroma==2.2
 pyrsistent==0.15.2
 pytz==2019.1
-PyYAML==3.13
+PyYAML==5.1
 radon==1.4.0
 requests==2.22.0
 restructuredtext-lint==1.0.1
